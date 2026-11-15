@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>投稿審查系統</title>
+    <style>
+        body { max-width: 760px; margin: 32px auto; padding: 0 16px; font: 16px/1.6 sans-serif; }
+        form, article { border: 1px solid #ccc; border-radius: 8px; padding: 16px; margin: 12px 0; }
+        label { display: block; margin-bottom: 10px; }
+        input, textarea { display: block; width: 100%; box-sizing: border-box; font: inherit; }
+        button { margin-right: 8px; padding: 5px 12px; cursor: pointer; }
+        .content { white-space: pre-wrap; overflow-wrap: anywhere; }
+    </style>
+</head>
+<body>
+    <h1>投稿審查系統</h1>
+    <button onclick="switchRole('author')">作者</button>
+    <button onclick="switchRole('editor')">編輯</button>
+
+    <h2 id="heading"></h2>
+    <button id="newDraft" onclick="openDraft()">新增稿件</button>
+
+    <form id="draftForm" hidden>
+        <label>類別 <input id="category" required></label>
+        <label>標題 <input id="title" required></label>
+        <label>文章內容 <textarea id="content" rows="5" required></textarea></label>
+        <button type="submit">儲存草稿</button>
+        <button type="button" onclick="draftForm.hidden = true">取消</button>
+    </form>
+
+    <div id="list"></div>
+
+    <script>
+        const storageKey = "submission-review";
+        let drafts = JSON.parse(localStorage.getItem(storageKey) || "[]");
+        let role = "author";
+        let editingDraft = null;
+
+        const heading = document.getElementById("heading");
+        const newDraft = document.getElementById("newDraft");
+        const draftForm = document.getElementById("draftForm");
+        const category = document.getElementById("category");
+        const title = document.getElementById("title");
+        const content = document.getElementById("content");
+        const list = document.getElementById("list");
+
+        function switchRole(nextRole) {
+            role = nextRole;
+            draftForm.hidden = true;
+            showList();
+        }
+
+        function openDraft(draft = null) {
+            editingDraft = draft;
+            category.value = draft ? draft.category : "";
+            title.value = draft ? draft.title : "";
+            content.value = draft ? draft.content : "";
+            draftForm.hidden = false;
+            category.focus();
+        }
+
+        draftForm.addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            const fields = {
+                category: category.value.trim(),
+                title: title.value.trim(),
+                content: content.value.trim()
+            };
+
+            if (!fields.category || !fields.title || !fields.content) {
+                alert("請填寫類別、標題和文章內容。");
+                return;
+            }
+
+            if (editingDraft) {
+                Object.assign(editingDraft, fields);
+            } else {
+                drafts.push({ ...fields, author: "示範作者", status: "編輯中" });
+            }
+
+            draftForm.hidden = true;
+            saveAndRefresh();
+        });
+
+        function saveAndRefresh() {
+            localStorage.setItem(storageKey, JSON.stringify(drafts));
+            showList();
+        }
+
+        function changeStatus(draft, status) {
+            draft.status = status;
+            saveAndRefresh();
+        }
+
+        function addButton(parent, label, action) {
+            const button = document.createElement("button");
+            button.textContent = label;
+            button.addEventListener("click", action);
+            parent.append(button);
+        }
+
+        function showList() {
+            const isAuthor = role === "author";
+            heading.textContent = isAuthor ? "我的稿件" : "待審查清單";
+            newDraft.hidden = !isAuthor;
+            list.replaceChildren();
+
+            const visibleDrafts = isAuthor
+                ? drafts
+                : drafts.filter(draft => draft.status === "審查中");
+
+            if (visibleDrafts.length === 0) {
+                list.textContent = isAuthor ? "目前沒有稿件" : "目前沒有待審稿件";
+            }
+
+            for (const draft of visibleDrafts) {
+                const card = document.createElement("article");
+                const summary = document.createElement("p");
+                summary.textContent = isAuthor
+                    ? `${draft.category}｜${draft.title}｜${draft.status}`
+                    : `${draft.author}｜${draft.category}｜${draft.title}`;
+                card.append(summary);
+
+                if (isAuthor && draft.status === "編輯中") {
+                    addButton(card, "編輯", () => openDraft(draft));
+                    addButton(card, "送審", () => {
+                        draftForm.hidden = true;
+                        changeStatus(draft, "審查中");
+                    });
+                    addButton(card, "刪除", () => {
+                        if (confirm("確定刪除這篇草稿？")) {
+                            drafts = drafts.filter(item => item !== draft);
+                            draftForm.hidden = true;
+                            saveAndRefresh();
+                        }
+                    });
+                }
+
+                if (!isAuthor) {
+                    const details = document.createElement("details");
+                    const label = document.createElement("summary");
+                    label.textContent = "查看全文";
+                    const article = document.createElement("p");
+                    article.className = "content";
+                    article.textContent = draft.content;
+                    details.append(label, article);
+                    addButton(details, "通過", () => changeStatus(draft, "已通過"));
+                    addButton(details, "退回", () => changeStatus(draft, "編輯中"));
+                    card.append(details);
+                }
+
+                list.append(card);
+            }
+        }
+
+        showList();
+    </script>
+</body>
+</html>
